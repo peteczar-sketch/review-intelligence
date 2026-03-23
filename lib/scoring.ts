@@ -11,6 +11,7 @@ export type CompanySummary = {
   complaints: string[];
   reliabilityScore: number;
   riskLevel: 'low' | 'medium' | 'high' | 'very-high';
+  confidence: 'Low' | 'Medium' | 'High';
   verdict: string;
   evidenceCount: number;
 };
@@ -42,44 +43,70 @@ function uniqueTop(items: string[], max = 5): string[] {
 }
 
 export function summarizeCompany(company: string, reviews: ReviewSignal[]): CompanySummary {
-  let score = 75;
+  const evidenceCount = reviews.length;
+
+  let score = 70;
   const positives: string[] = [];
   const complaints: string[] = [];
 
   for (const review of reviews) {
-    const text = review.text;
+    const text = (review.text ?? '').trim();
+
     if (typeof review.rating === 'number') {
-      if (review.rating >= 4) score += 4;
-      if (review.rating <= 2) score -= 7;
+      if (review.rating >= 4.5) score += 4;
+      else if (review.rating >= 4) score += 2;
+      else if (review.rating <= 2) score -= 8;
+      else if (review.rating <= 3) score -= 3;
     }
 
-    for (const rule of POSITIVE_PATTERNS) {
-      if (rule.pattern.test(text)) {
-        positives.push(rule.label);
-        score += 3;
+    if (text.length > 0) {
+      for (const rule of POSITIVE_PATTERNS) {
+        if (rule.pattern.test(text)) {
+          positives.push(rule.label);
+          score += 3;
+        }
       }
-    }
 
-    for (const rule of NEGATIVE_PATTERNS) {
-      if (rule.pattern.test(text)) {
-        complaints.push(rule.label);
-        score -= rule.penalty;
+      for (const rule of NEGATIVE_PATTERNS) {
+        if (rule.pattern.test(text)) {
+          complaints.push(rule.label);
+          score -= rule.penalty;
+        }
       }
     }
   }
 
-  score = clamp(Math.round(score / Math.max(1, 1 + reviews.length * 0.08)), 5, 95);
+  if (evidenceCount < 5) {
+    score = Math.round(score * 0.55);
+  } else if (evidenceCount < 10) {
+    score = Math.round(score * 0.72);
+  } else if (evidenceCount < 20) {
+    score = Math.round(score * 0.85);
+  }
+
+  score = clamp(Math.round(score), 5, 95);
+
+  const confidence: CompanySummary['confidence'] =
+    evidenceCount >= 50 ? 'High' :
+    evidenceCount >= 15 ? 'Medium' :
+    'Low';
 
   const riskLevel: CompanySummary['riskLevel'] =
     score >= 80 ? 'low' :
     score >= 60 ? 'medium' :
-    score >= 35 ? 'high' : 'very-high';
+    score >= 35 ? 'high' :
+    'very-high';
 
   const verdict =
-    riskLevel === 'low' ? 'Strong reliability signal across available evidence.' :
-    riskLevel === 'medium' ? 'Promising, but evidence is mixed or limited.' :
-    riskLevel === 'high' ? 'Meaningful reliability risk; use caution.' :
-    'High probability of service failure based on repeated complaints.';
+    confidence === 'Low'
+      ? 'Limited evidence available — treat this result cautiously.'
+      : riskLevel === 'low'
+        ? 'Strong reliability signal across available evidence.'
+        : riskLevel === 'medium'
+          ? 'Promising, but evidence is mixed or limited.'
+          : riskLevel === 'high'
+            ? 'Meaningful reliability risk; use caution.'
+            : 'High probability of service failure based on repeated complaints.';
 
   return {
     company,
@@ -87,7 +114,8 @@ export function summarizeCompany(company: string, reviews: ReviewSignal[]): Comp
     complaints: uniqueTop(complaints, 7),
     reliabilityScore: score,
     riskLevel,
+    confidence,
     verdict,
-    evidenceCount: reviews.length
+    evidenceCount
   };
 }
