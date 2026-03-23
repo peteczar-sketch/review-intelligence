@@ -21,6 +21,7 @@ const getRiskEmoji = (riskLevel: string) => {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]); // State to hold search results
+  const [noDataMessage, setNoDataMessage] = useState('');
 
   const services = ['Snow Removal', 'Lawn Care', 'Driveway Cleaning']; // Placeholder for service categories
 
@@ -31,6 +32,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   // Fetch data based on the query
   const fetchData = async () => {
+    setNoDataMessage(''); // Reset message before fetching
+
     const response = await fetch('/api/analyze', {
       method: 'POST',
       headers: {
@@ -40,7 +43,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     });
 
     const data = await response.json();
-    setResults(data.results); // Assuming API response has `results` field
+
+    if (data.error) {
+      setNoDataMessage('Error fetching data. Please try again later.');
+    } else if (data.results.length === 0) {
+      setNoDataMessage('No results found for this search. Try with different criteria.');
+    } else {
+      setResults(data.results); // Assuming API response has `results` field
+    }
   };
 
   // Autocomplete configuration for the search input
@@ -71,42 +81,47 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           onSelect={(value) => setQuery(value)}
         />
         <button onClick={fetchData}>Analyze</button>
-        <div>
-          {results.map((result, index) => (
-            <div key={index} className="result">
-              <h2>{result.company}</h2>
+        
+        {noDataMessage ? (
+          <div className="no-data-message">{noDataMessage}</div>
+        ) : (
+          <div>
+            {results.map((result, index) => (
+              <div key={index} className="result">
+                <h2>{result.company}</h2>
 
-              {/* Display the reliability score as a progress bar */}
-              <div className="rating">
-                <div style={getRatingBarStyle(result.reliabilityScore)}></div>
-              </div>
-
-              {/* Display the score and risk level with emojis */}
-              <p>{result.reliabilityScore}/100</p>
-              <div className="risk-level">
-                {getRiskEmoji(result.riskLevel)} {result.riskLevel.toUpperCase()}
-              </div>
-
-              {/* Display verdict, address, and website */}
-              <p>{result.verdict}</p>
-              <p>Address: {result.address}</p>
-              {result.website && <a href={result.website}>Visit Website</a>}
-              {result.phone && <p>Phone: {result.phone}</p>}
-
-              {/* Sources and reviews */}
-              {result.sources?.map((source: any, idx: number) => (
-                <div key={idx}>
-                  <p>
-                    {source.source}: ★{source.rating} ({source.reviewCount} reviews)
-                    <a href={source.url} target="_blank" rel="noopener noreferrer">
-                      View source
-                    </a>
-                  </p>
+                {/* Display the reliability score as a progress bar */}
+                <div className="rating">
+                  <div style={getRatingBarStyle(result.reliabilityScore)}></div>
                 </div>
-              ))}
-            </div>
-          ))}
-        </div>
+
+                {/* Display the score and risk level with emojis */}
+                <p>{result.reliabilityScore}/100</p>
+                <div className="risk-level">
+                  {getRiskEmoji(result.riskLevel)} {result.riskLevel.toUpperCase()}
+                </div>
+
+                {/* Display verdict, address, and website */}
+                <p>{result.verdict}</p>
+                <p>Address: {result.address}</p>
+                {result.website && <a href={result.website}>Visit Website</a>}
+                {result.phone && <p>Phone: {result.phone}</p>}
+
+                {/* Sources and reviews */}
+                {result.sources?.map((source: any, idx: number) => (
+                  <div key={idx}>
+                    <p>
+                      {source.source}: ★{source.rating} ({source.reviewCount} reviews)
+                      <a href={source.url} target="_blank" rel="noopener noreferrer">
+                        View source
+                      </a>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </body>
     </html>
   );
