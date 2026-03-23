@@ -1,3 +1,4 @@
+// Your route.ts file
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchGoogleBusinesses, fetchYelpBusinesses, fetchChamberBusinesses, type ProviderBusiness } from '@/lib/providers';
 import { summarizeCompany } from '@/lib/scoring';
@@ -18,7 +19,8 @@ function mergeBusinesses(businesses: ProviderBusiness[]) {
   const merged = [];
   for (const [, group] of byName.entries()) {
     const allReviews = group.flatMap(g =>
-      (g.reviews ?? []).map(r => ({ ...r, source: g.source })));
+      (g.reviews ?? []).map(r => ({ ...r, source: g.source }))
+    );
 
     const first = group[0];
     const summary = summarizeCompany(first.name, allReviews);
@@ -31,7 +33,7 @@ function mergeBusinesses(businesses: ProviderBusiness[]) {
         reviewCount: g.reviewCount ?? null,
         url: g.url ?? null
       })),
-      summary
+      summary,
     });
   }
 
@@ -53,11 +55,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'query and city are required' }, { status: 400 });
     }
 
+    // Fetching from different APIs
     const [google, yelp, chamber] = await Promise.all([
       fetchGoogleBusinesses(input),
       fetchYelpBusinesses(input),
-      fetchChamberBusinesses(input)
+      fetchChamberBusinesses(input),
     ]);
+
+    // Remove the limited data message if there is no data
+    if (!google.length && !yelp.length && !chamber.length) {
+      return NextResponse.json({
+        message: 'No valid data found, please verify the search criteria and try again.',
+        providers: { google: google.length, yelp: yelp.length, chamber: chamber.length },
+      });
+    }
 
     const merged = mergeBusinesses([...google, ...yelp, ...chamber]);
 
