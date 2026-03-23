@@ -19,6 +19,22 @@ function normalizedName(name: string) {
   return name.trim().toLowerCase().replace(/[®™]/g, '').replace(/\s+/g, ' ');
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+
+    promise
+      .then((value) => {
+        clearTimeout(id);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(id);
+        reject(err);
+      });
+  });
+}
+
 function mergeBusinesses(businesses: ProviderBusiness[]) {
   const byName = new Map<string, ProviderBusiness[]>();
 
@@ -29,13 +45,31 @@ function mergeBusinesses(businesses: ProviderBusiness[]) {
   }
 
   const merged = [];
+
   for (const [, group] of byName.entries()) {
-    const allReviews = group.flatMap((g) =>
-      (g.reviews ?? []).map((r) => ({
-        ...r,
-        source: toReviewSource(g.source)
-      }))
-    );
+    const allReviews = group.flatMap((g) => {
+      const source = toReviewSource(g.source);
+
+      const realReviews = (g.reviews ?? []).map((r) => ({
+        text: r.text ?? '',
+        rating: r.rating ?? null,
+        source
+      }));
+
+      // If no actual review text is available, synthesize one signal from aggregate data
+      // so evidence count / confidence are not zero while source review counts are high.
+      if (realReviews.length === 0 && g.reviewCount && g.rating != null) {
+        return [
+          {
+            source,
+            text: `Aggregate rating ${g.rating} from ${g.reviewCount} reviews`,
+            rating: g.rating
+          }
+        ];
+      }
+
+      return realReviews;
+    });
 
     const first = group[0];
     const summary = summarizeCompany(first.name, allReviews);
@@ -56,22 +90,6 @@ function mergeBusinesses(businesses: ProviderBusiness[]) {
   }
 
   return merged.sort((a, b) => b.summary.reliabilityScore - a.summary.reliabilityScore);
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const id = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-
-    promise
-      .then((value) => {
-        clearTimeout(id);
-        resolve(value);
-      })
-      .catch((err) => {
-        clearTimeout(id);
-        reject(err);
-      });
-  });
 }
 
 export async function POST(req: NextRequest) {
