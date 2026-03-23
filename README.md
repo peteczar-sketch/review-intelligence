@@ -1,4 +1,4 @@
-# Review Intelligence - Automated Version
+deploy fix# Review Intelligence - Automated Version
 
 This is the upgraded version of the MVP. It is designed for **full automation**:
 - server fetches businesses from Google and Yelp automatically
