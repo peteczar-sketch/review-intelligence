@@ -45,7 +45,10 @@ function uniqueTop(items: string[], max = 5): string[] {
 export function summarizeCompany(company: string, reviews: ReviewSignal[]): CompanySummary {
   const evidenceCount = reviews.length;
 
-  let score = 70;
+  // Better starting point so companies with strong aggregate ratings
+  // do not get unfairly crushed when detailed review text is sparse.
+  let score = 50 + (evidenceCount * 2);
+
   const positives: string[] = [];
   const complaints: string[] = [];
 
@@ -76,20 +79,38 @@ export function summarizeCompany(company: string, reviews: ReviewSignal[]): Comp
     }
   }
 
-  if (evidenceCount < 5) {
-    score = Math.round(score * 0.55);
-  } else if (evidenceCount < 10) {
-    score = Math.round(score * 0.72);
-  } else if (evidenceCount < 20) {
-    score = Math.round(score * 0.85);
+  // Boost or penalize based on average rating even if textual evidence is thin.
+  const ratings = reviews
+    .map((r) => r.rating)
+    .filter((r): r is number => typeof r === 'number');
+
+  const avgRating =
+    ratings.length > 0
+      ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
+      : null;
+
+  if (avgRating !== null) {
+    if (avgRating >= 4.5) score += 20;
+    else if (avgRating >= 4.0) score += 12;
+    else if (avgRating <= 2.5) score -= 20;
+    else if (avgRating <= 3.2) score -= 10;
   }
 
-  score = clamp(Math.round(score), 5, 95);
-
+  // Confidence should reflect how much signal we actually analyzed.
   const confidence: CompanySummary['confidence'] =
     evidenceCount >= 50 ? 'High' :
     evidenceCount >= 15 ? 'Medium' :
     'Low';
+
+  // Penalize low evidence, but not so hard that strong aggregate businesses
+  // look automatically terrible.
+  if (evidenceCount < 3) {
+    score = Math.round(score * 0.72);
+  } else if (evidenceCount < 8) {
+    score = Math.round(score * 0.85);
+  }
+
+  score = clamp(Math.round(score), 5, 95);
 
   const riskLevel: CompanySummary['riskLevel'] =
     score >= 80 ? 'low' :
