@@ -67,7 +67,6 @@ export async function POST(req: NextRequest) {
 
     const merged = mergeBusinesses([...google, ...yelp, ...chamber]);
 
-    // **Ensure the "Limited Data Available" message is not included**
     const updatedResults = merged.map(result => {
       // Remove or replace the "Limited Data Available" message logic
       if (!result.sources || result.sources.length === 0) {
