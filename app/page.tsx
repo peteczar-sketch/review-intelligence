@@ -25,6 +25,9 @@ type Summary = {
 type ResultItem = {
   company: string;
   sources: SourceInfo[];
+  meta?: {
+    totalSourceReviewCount?: number;
+  };
   summary: Summary;
 };
 
@@ -66,6 +69,7 @@ function scoreColors(score: number) {
 
 function riskPill(risk?: string) {
   const value = (risk || '').toLowerCase();
+
   if (value === 'low') {
     return {
       label: 'Low Risk',
@@ -73,6 +77,15 @@ function riskPill(risk?: string) {
       color: '#166534'
     };
   }
+
+  if (value === 'very-high') {
+    return {
+      label: 'Very High Risk',
+      bg: '#7f1d1d',
+      color: '#fee2e2'
+    };
+  }
+
   if (value === 'high') {
     return {
       label: 'High Risk',
@@ -80,6 +93,7 @@ function riskPill(risk?: string) {
       color: '#991b1b'
     };
   }
+
   return {
     label: 'Medium Risk',
     bg: '#fef3c7',
@@ -184,7 +198,7 @@ export default function HomePage() {
                 maxWidth: 700
               }}
             >
-              Find the strongest local service providers faster. Aggregate Google and Yelp,
+              Find stronger local service providers faster. Aggregate Google and Yelp,
               surface risk, and compare providers with a cleaner decision view.
             </p>
           </div>
@@ -364,9 +378,11 @@ export default function HomePage() {
             const riskTheme = riskPill(result.summary?.riskLevel);
             const evidenceCount = result.summary?.evidenceCount ?? 0;
             const confidence = result.summary?.confidence ?? 'Unknown';
-            const primaryAddress = result.sources.find((s) => s.address)?.address;
-            const primaryWebsite = result.sources.find((s) => s.website)?.website;
-            const primaryPhone = result.sources.find((s) => s.phone)?.phone;
+            const totalSourceReviewCount = result.meta?.totalSourceReviewCount ?? 0;
+
+            const primaryAddress = result.sources.find((s) => s.address)?.address ?? null;
+            const primaryWebsite = result.sources.find((s) => s.website)?.website ?? null;
+            const primaryPhone = result.sources.find((s) => s.phone)?.phone ?? null;
 
             return (
               <article
@@ -443,19 +459,17 @@ export default function HomePage() {
                       {result.company}
                     </h2>
 
-                    {result.summary?.verdict && (
-                      <p
-                        style={{
-                          marginTop: 12,
-                          marginBottom: 0,
-                          color: '#cbd5e1',
-                          fontSize: 16,
-                          lineHeight: 1.6
-                        }}
-                      >
-                        {result.summary.verdict}
-                      </p>
-                    )}
+                    <p
+                      style={{
+                        marginTop: 12,
+                        marginBottom: 0,
+                        color: '#cbd5e1',
+                        fontSize: 16,
+                        lineHeight: 1.6
+                      }}
+                    >
+                      {result.summary?.verdict ?? 'No verdict available.'}
+                    </p>
                   </div>
 
                   <div
@@ -509,19 +523,37 @@ export default function HomePage() {
                     </div>
 
                     <div style={{ display: 'grid', gap: 10 }}>
-                      <div>
-                        <strong style={{ color: '#f8fafc' }}>Confidence:</strong>{' '}
-                        <span style={{ color: '#cbd5e1' }}>{confidence}</span>
+                      <div style={{ color: '#cbd5e1', fontSize: 15 }}>
+                        <strong style={{ color: '#f8fafc' }}>Confidence:</strong> {confidence}
+                        <span style={{ opacity: 0.75 }}>
+                          {' '}
+                          (based on {evidenceCount} analyzed signal{evidenceCount === 1 ? '' : 's'})
+                        </span>
                       </div>
-                      <div>
-                        <strong style={{ color: '#f8fafc' }}>Evidence Count:</strong>{' '}
-                        <span style={{ color: '#cbd5e1' }}>{evidenceCount}</span>
+
+                      <div style={{ color: '#cbd5e1', fontSize: 15 }}>
+                        <strong style={{ color: '#f8fafc' }}>Signals analyzed:</strong>{' '}
+                        {evidenceCount}
                       </div>
+
+                      {totalSourceReviewCount > 0 && (
+                        <div
+                          style={{
+                            color: '#bfdbfe',
+                            fontSize: 15,
+                            background: 'rgba(96,165,250,0.08)',
+                            border: '1px solid rgba(96,165,250,0.18)',
+                            borderRadius: 14,
+                            padding: '10px 12px'
+                          }}
+                        >
+                          Based on {totalSourceReviewCount}+ public reviews across sources
+                        </div>
+                      )}
 
                       {evidenceCount < 5 && (
                         <div
                           style={{
-                            marginTop: 6,
                             background: 'rgba(251,191,36,0.12)',
                             border: '1px solid rgba(251,191,36,0.28)',
                             color: '#fde68a',
@@ -535,14 +567,13 @@ export default function HomePage() {
                       )}
 
                       {primaryAddress && (
-                        <div>
-                          <strong style={{ color: '#f8fafc' }}>Address:</strong>{' '}
-                          <span style={{ color: '#cbd5e1' }}>{primaryAddress}</span>
+                        <div style={{ color: '#cbd5e1', fontSize: 15 }}>
+                          <strong style={{ color: '#f8fafc' }}>Address:</strong> {primaryAddress}
                         </div>
                       )}
 
                       {primaryWebsite && (
-                        <div>
+                        <div style={{ color: '#cbd5e1', fontSize: 15 }}>
                           <strong style={{ color: '#f8fafc' }}>Website:</strong>{' '}
                           <a
                             href={primaryWebsite}
@@ -556,9 +587,8 @@ export default function HomePage() {
                       )}
 
                       {primaryPhone && (
-                        <div>
-                          <strong style={{ color: '#f8fafc' }}>Phone:</strong>{' '}
-                          <span style={{ color: '#cbd5e1' }}>{primaryPhone}</span>
+                        <div style={{ color: '#cbd5e1', fontSize: 15 }}>
+                          <strong style={{ color: '#f8fafc' }}>Phone:</strong> {primaryPhone}
                         </div>
                       )}
                     </div>
