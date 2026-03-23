@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     const updatedResults = merged.map(result => {
       // Remove or replace the "Limited Data Available" message logic
       if (!result.sources || result.sources.length === 0) {
-        result.intelligenceSummary = 'Insufficient data — please verify this service further.';
+        result.intelligenceSummary = 'Insufficient data — please verify this service further.'; // Custom message
       } else {
         result.intelligenceSummary = 'Results are complete and reliable.';
       }
