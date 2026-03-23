@@ -42,75 +42,97 @@ function uniqueTop(items: string[], max = 5): string[] {
   return [...new Set(items)].slice(0, max);
 }
 
+function extractAggregateReviewCount(text: string): number {
+  const match = text.match(/from\s+(\d+)\s+reviews/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function ratingTo100(rating: number): number {
+  // 1–5 stars → 0–100 scale
+  return clamp(Math.round(((rating - 1) / 4) * 100), 0, 100);
+}
+
 export function summarizeCompany(company: string, reviews: ReviewSignal[]): CompanySummary {
   const evidenceCount = reviews.length;
-
-  // Better starting point so companies with strong aggregate ratings
-  // do not get unfairly crushed when detailed review text is sparse.
-  let score = 50 + (evidenceCount * 2);
 
   const positives: string[] = [];
   const complaints: string[] = [];
 
+  let patternScore = 65;
+  let aggregateReviewCount = 0;
+
+  const ratings = reviews
+    .map((r) => r.rating)
+    .filter((r): r is number => typeof r === 'number');
+
   for (const review of reviews) {
     const text = (review.text ?? '').trim();
 
-    if (typeof review.rating === 'number') {
-      if (review.rating >= 4.5) score += 4;
-      else if (review.rating >= 4) score += 2;
-      else if (review.rating <= 2) score -= 8;
-      else if (review.rating <= 3) score -= 3;
-    }
+    aggregateReviewCount += extractAggregateReviewCount(text);
 
     if (text.length > 0) {
       for (const rule of POSITIVE_PATTERNS) {
         if (rule.pattern.test(text)) {
           positives.push(rule.label);
-          score += 3;
+          patternScore += 4;
         }
       }
 
       for (const rule of NEGATIVE_PATTERNS) {
         if (rule.pattern.test(text)) {
           complaints.push(rule.label);
-          score -= rule.penalty;
+          patternScore -= rule.penalty;
         }
       }
     }
   }
 
-  // Boost or penalize based on average rating even if textual evidence is thin.
-  const ratings = reviews
-    .map((r) => r.rating)
-    .filter((r): r is number => typeof r === 'number');
+  patternScore = clamp(Math.round(patternScore), 5, 95);
 
   const avgRating =
     ratings.length > 0
       ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
       : null;
 
-  if (avgRating !== null) {
-    if (avgRating >= 4.5) score += 20;
-    else if (avgRating >= 4.0) score += 12;
-    else if (avgRating <= 2.5) score -= 20;
-    else if (avgRating <= 3.2) score -= 10;
+  const ratingScore = avgRating != null ? ratingTo100(avgRating) : null;
+
+  let score = patternScore;
+
+  if (ratingScore != null) {
+    // Heavier trust in aggregate public ratings when review volume is strong.
+    if (aggregateReviewCount >= 200) {
+      score = Math.round(ratingScore * 0.8 + patternScore * 0.2);
+    } else if (aggregateReviewCount >= 50) {
+      score = Math.round(ratingScore * 0.7 + patternScore * 0.3);
+    } else if (aggregateReviewCount >= 10) {
+      score = Math.round(ratingScore * 0.6 + patternScore * 0.4);
+    } else {
+      score = Math.round(ratingScore * 0.45 + patternScore * 0.55);
+    }
   }
 
-  // Confidence should reflect how much signal we actually analyzed.
-  const confidence: CompanySummary['confidence'] =
-    evidenceCount >= 50 ? 'High' :
-    evidenceCount >= 15 ? 'Medium' :
-    'Low';
+  // If we have almost no analyzed signals and no major complaint patterns,
+  // don't let sparse evidence make a strong aggregate business look dangerous.
+  if (evidenceCount <= 2 && complaints.length === 0 && aggregateReviewCount >= 100 && avgRating != null && avgRating >= 4.2) {
+    score = Math.max(score, 78);
+  }
 
-  // Penalize low evidence, but not so hard that strong aggregate businesses
-  // look automatically terrible.
-  if (evidenceCount < 3) {
-    score = Math.round(score * 0.72);
-  } else if (evidenceCount < 8) {
-    score = Math.round(score * 0.85);
+  // If there ARE major complaints, allow them to pull the score down.
+  if (complaints.length >= 2) {
+    score -= 8;
+  }
+  if (complaints.length >= 4) {
+    score -= 10;
   }
 
   score = clamp(Math.round(score), 5, 95);
+
+  const confidence: CompanySummary['confidence'] =
+    aggregateReviewCount >= 100 || evidenceCount >= 20
+      ? 'High'
+      : aggregateReviewCount >= 20 || evidenceCount >= 5
+        ? 'Medium'
+        : 'Low';
 
   const riskLevel: CompanySummary['riskLevel'] =
     score >= 80 ? 'low' :
@@ -118,16 +140,23 @@ export function summarizeCompany(company: string, reviews: ReviewSignal[]): Comp
     score >= 35 ? 'high' :
     'very-high';
 
-  const verdict =
-    confidence === 'Low'
-      ? 'Limited evidence available — treat this result cautiously.'
-      : riskLevel === 'low'
-        ? 'Strong reliability signal across available evidence.'
-        : riskLevel === 'medium'
-          ? 'Promising, but evidence is mixed or limited.'
-          : riskLevel === 'high'
-            ? 'Meaningful reliability risk; use caution.'
-            : 'High probability of service failure based on repeated complaints.';
+  let verdict = 'Mixed signals based on available evidence.';
+
+  if (riskLevel === 'low') {
+    verdict =
+      aggregateReviewCount >= 100
+        ? 'Strong public reputation backed by substantial review volume.'
+        : 'Strong reliability signal across available evidence.';
+  } else if (riskLevel === 'medium') {
+    verdict =
+      aggregateReviewCount >= 50
+        ? 'Solid public reputation, though detailed reliability evidence is still somewhat limited.'
+        : 'Promising, but evidence is mixed or limited.';
+  } else if (riskLevel === 'high') {
+    verdict = 'Meaningful reliability risk; use caution.';
+  } else {
+    verdict = 'High probability of service failure based on repeated complaints.';
+  }
 
   return {
     company,
