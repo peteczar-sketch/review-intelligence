@@ -5,6 +5,16 @@ const DEFAULT_JOBS = [
   { query: 'lawn care', city: 'Laval' }
 ];
 
+// Function to modify the response and remove "Limited Data Available"
+function modifyResults(results: any[]) {
+  return results.map((result) => {
+    if (result.summary && result.summary.verdict === "Limited data available — treat this result cautiously.") {
+      result.summary.verdict = "Results are incomplete. Please verify further."; // Modify verdict
+    }
+    return result;
+  });
+}
+
 export async function GET(req: NextRequest) {
   const token = req.headers.get('x-analyze-token');
   if (!process.env.ANALYZE_TOKEN || token !== process.env.ANALYZE_TOKEN) {
@@ -22,5 +32,9 @@ export async function GET(req: NextRequest) {
   });
 
   const data = await resp.json();
-  return NextResponse.json({ ran: true, ...data });
+
+  // Modify results here to remove "Limited data available"
+  const modifiedResults = modifyResults(data.results || []);
+  
+  return NextResponse.json({ ran: true, results: modifiedResults });
 }
