@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchGoogleBusinesses, fetchYelpBusinesses, fetchChamberBusinesses, type ProviderBusiness } from '@/lib/providers';
+import {
+  fetchGoogleBusinesses,
+  fetchYelpBusinesses,
+  fetchChamberBusinesses,
+  type ProviderBusiness
+} from '@/lib/providers';
 import { summarizeCompany } from '@/lib/scoring';
-import { aiSummarizeCompany } from '@/lib/openai';
 
 function normalizedName(name: string) {
   return name.trim().toLowerCase().replace(/[®™]/g, '').replace(/\s+/g, ' ');
 }
 
-async function mergeBusinesses(businesses: ProviderBusiness[]) {
+function mergeBusinesses(businesses: ProviderBusiness[]) {
   const byName = new Map<string, ProviderBusiness[]>();
+
   for (const b of businesses) {
     const key = normalizedName(b.name);
     if (!byName.has(key)) byName.set(key, []);
@@ -17,10 +22,13 @@ async function mergeBusinesses(businesses: ProviderBusiness[]) {
 
   const merged = [];
   for (const [, group] of byName.entries()) {
-    const allReviews = group.flatMap(g => (g.reviews ?? []).map(r => ({ ...r, source: g.source })));
+    const allReviews = group.flatMap(g =>
+      (g.reviews ?? []).map(r => ({ ...r, source: g.source }))
+    );
+
     const first = group[0];
-    const fallback = summarizeCompany(first.name, allReviews);
-    const summary = await aiSummarizeCompany({ company: first.name, reviews: allReviews, fallback });
+    const summary = summarizeCompany(first.name, allReviews);
+
     merged.push({
       company: first.name,
       sources: group.map(g => ({
@@ -39,6 +47,7 @@ async function mergeBusinesses(businesses: ProviderBusiness[]) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
     const input = {
       query: String(body.query ?? ''),
       city: String(body.city ?? ''),
@@ -56,7 +65,7 @@ export async function POST(req: NextRequest) {
       fetchChamberBusinesses(input)
     ]);
 
-    const merged = await mergeBusinesses([...google, ...yelp, ...chamber]);
+    const merged = mergeBusinesses([...google, ...yelp, ...chamber]);
 
     return NextResponse.json({
       input,
