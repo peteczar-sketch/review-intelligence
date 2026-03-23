@@ -48,7 +48,6 @@ function extractAggregateReviewCount(text: string): number {
 }
 
 function ratingTo100(rating: number): number {
-  // 1–5 stars → 0–100 scale
   return clamp(Math.round(((rating - 1) / 4) * 100), 0, 100);
 }
 
@@ -99,7 +98,6 @@ export function summarizeCompany(company: string, reviews: ReviewSignal[]): Comp
   let score = patternScore;
 
   if (ratingScore != null) {
-    // Heavier trust in aggregate public ratings when review volume is strong.
     if (aggregateReviewCount >= 200) {
       score = Math.round(ratingScore * 0.8 + patternScore * 0.2);
     } else if (aggregateReviewCount >= 50) {
@@ -111,13 +109,6 @@ export function summarizeCompany(company: string, reviews: ReviewSignal[]): Comp
     }
   }
 
-  // If we have almost no analyzed signals and no major complaint patterns,
-  // don't let sparse evidence make a strong aggregate business look dangerous.
-  if (evidenceCount <= 2 && complaints.length === 0 && aggregateReviewCount >= 100 && avgRating != null && avgRating >= 4.2) {
-    score = Math.max(score, 78);
-  }
-
-  // If there ARE major complaints, allow them to pull the score down.
   if (complaints.length >= 2) {
     score -= 8;
   }
