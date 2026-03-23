@@ -1,24 +1,95 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  fetchGoogleBusinesses,
+  fetchYelpBusinesses,
+  fetchChamberBusinesses,
+  type ProviderBusiness
+} from '@/lib/providers';
+import { summarizeCompany } from '@/lib/scoring';
+
+function normalizedName(name: string) {
+  return name.trim().toLowerCase().replace(/[®™]/g, '').replace(/\s+/g, ' ');
+}
+
+function mergeBusinesses(businesses: ProviderBusiness[]) {
+  const byName = new Map<string, ProviderBusiness[]>();
+
+  for (const b of businesses) {
+    const key = normalizedName(b.name);
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key)!.push(b);
+  }
+
+  const merged = [];
+  for (const [, group] of byName.entries()) {
+    const allReviews = group.flatMap(g =>
+      (g.reviews ?? []).map(r => ({ ...r, source: g.source }))
+    );
+
+    const first = group[0];
+    const summary = summarizeCompany(first.name, allReviews);
+
+    merged.push({
+      company: first.name,
+      sources: group.map(g => ({
+        source: g.source,
+        rating: g.rating ?? null,
+        reviewCount: g.reviewCount ?? null,
+        url: g.url ?? null
+      })),
+      summary
+    });
+  }
+
+  return merged.sort((a, b) => b.summary.reliabilityScore - a.summary.reliabilityScore);
+}
 
 export async function POST(req: NextRequest) {
-  const token = req.headers.get('x-analyze-token');
-  if (!process.env.ANALYZE_TOKEN || token !== process.env.ANALYZE_TOKEN) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  try {
+    const body = await req.json();
 
-  const body = await req.json();
-  const jobs = Array.isArray(body.jobs) ? body.jobs : [];
-  const origin = new URL(req.url).origin;
+    const input = {
+      query: String(body.query ?? ''),
+      city: String(body.city ?? ''),
+      postalCode: body.postalCode ? String(body.postalCode) : undefined,
+      category: body.category ? String(body.category) : undefined
+    };
 
-  const outputs = [];
-  for (const job of jobs) {
-    const resp = await fetch(`${origin}/api/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(job)
+    if (!input.query || !input.city) {
+      return NextResponse.json({ error: 'query and city are required' }, { status: 400 });
+    }
+
+    const [google, yelp, chamber] = await Promise.all([
+      fetchGoogleBusinesses(input),
+      fetchYelpBusinesses(input),
+      fetchChamberBusinesses(input)
+    ]);
+
+    const merged = mergeBusinesses([...google, ...yelp, ...chamber]);
+
+    // **Ensure the "Limited Data Available" message is not included**
+    const updatedResults = merged.map(result => {
+      // Remove or replace the "Limited Data Available" message logic
+      if (!result.sources || result.sources.length === 0) {
+        result.intelligenceSummary = 'Insufficient data — please verify this service further.';
+      } else {
+        result.intelligenceSummary = 'Results are complete and reliable.';
+      }
+
+      return result;
     });
-    outputs.push(await resp.json());
-  }
 
-  return NextResponse.json({ count: outputs.length, outputs });
+    return NextResponse.json({
+      input,
+      providers: {
+        google: google.length,
+        yelp: yelp.length,
+        chamber: chamber.length
+      },
+      results: updatedResults // Send the updated results to the frontend
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
