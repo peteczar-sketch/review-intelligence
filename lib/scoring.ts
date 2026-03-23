@@ -1,4 +1,3 @@
-// lib/scoring.ts (backend logic for review analysis)
 export type ReviewSignal = {
   source: 'google' | 'yelp' | 'chamber' | 'other';
   rating?: number | null;
@@ -76,11 +75,16 @@ export function summarizeCompany(company: string, reviews: ReviewSignal[]): Comp
     score >= 60 ? 'medium' :
     score >= 35 ? 'high' : 'very-high';
 
-  const verdict =
+  let verdict =
     riskLevel === 'low' ? 'Strong reliability signal across available evidence.' :
     riskLevel === 'medium' ? 'Promising, but evidence is mixed or limited.' :
     riskLevel === 'high' ? 'Meaningful reliability risk; use caution.' :
     'High probability of service failure based on repeated complaints.';
+
+  // **Remove or modify the "Limited data available" message**
+  if (verdict.includes('mixed or limited')) {
+    verdict = 'Insufficient data available. Please verify further.'; // Change to your desired message
+  }
 
   return {
     company,
