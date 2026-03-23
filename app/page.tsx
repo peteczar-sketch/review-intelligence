@@ -70,19 +70,17 @@ export default function HomePage() {
         <div key={index} className="result">
           <h2>{result.company}</h2>
 
-          {/* Display the reliability score as a progress bar */}
+          {/* Removed the summary section entirely */}
           <div className="rating">
             <div style={getRatingBarStyle(result.reliabilityScore)}></div>
           </div>
 
-          {/* Display the score and risk level with emojis */}
+          {/* Removed the summary */}
           <p>{result.reliabilityScore}/100</p>
           <div className="risk-level">
             {getRiskEmoji(result.riskLevel)} {result.riskLevel.toUpperCase()}
           </div>
 
-          {/* Display verdict, address, and website */}
-          <p>{result.verdict}</p>
           <p>Address: {result.address}</p>
           {result.website && <a href={result.website}>Visit Website</a>}
           {result.phone && <p>Phone: {result.phone}</p>}
