@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   fetchGoogleBusinesses,
   fetchYelpBusinesses,
-  fetchChamberBusinesses,
   type ProviderBusiness
 } from '@/lib/providers';
 import { summarizeCompany } from '@/lib/scoring';
@@ -44,6 +43,22 @@ function mergeBusinesses(businesses: ProviderBusiness[]) {
   return merged.sort((a, b) => b.summary.reliabilityScore - a.summary.reliabilityScore);
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+
+    promise
+      .then((value) => {
+        clearTimeout(id);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(id);
+        reject(err);
+      });
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -59,22 +74,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'query and city are required' }, { status: 400 });
     }
 
-    const [google, yelp, chamber] = await Promise.all([
-      fetchGoogleBusinesses(input),
-      fetchYelpBusinesses(input),
-      fetchChamberBusinesses(input)
+    const providerCalls = await Promise.allSettled([
+      withTimeout(fetchGoogleBusinesses(input), 6000, 'Google'),
+      withTimeout(fetchYelpBusinesses(input), 6000, 'Yelp')
     ]);
 
-    const merged = mergeBusinesses([...google, ...yelp, ...chamber]);
+    const google =
+      providerCalls[0].status === 'fulfilled' ? providerCalls[0].value : [];
+
+    const yelp =
+      providerCalls[1].status === 'fulfilled' ? providerCalls[1].value : [];
+
+    const merged = mergeBusinesses([...google, ...yelp]);
+
+    const warnings = providerCalls
+      .map((result, index) => {
+        if (result.status === 'rejected') {
+          return `${index === 0 ? 'Google' : 'Yelp'} failed: ${
+            result.reason instanceof Error ? result.reason.message : String(result.reason)
+          }`;
+        }
+        return null;
+      })
+      .filter(Boolean);
 
     return NextResponse.json({
       input,
       providers: {
         google: google.length,
-        yelp: yelp.length,
-        chamber: chamber.length
+        yelp: yelp.length
       },
-      results: merged
+      results: merged,
+      warnings
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
