@@ -6,6 +6,15 @@ import {
 } from '@/lib/providers';
 import { summarizeCompany } from '@/lib/scoring';
 
+type ReviewSource = 'google' | 'yelp' | 'chamber' | 'other';
+
+function toReviewSource(source: string): ReviewSource {
+  if (source === 'google') return 'google';
+  if (source === 'yelp') return 'yelp';
+  if (source === 'chamber') return 'chamber';
+  return 'other';
+}
+
 function normalizedName(name: string) {
   return name.trim().toLowerCase().replace(/[®™]/g, '').replace(/\s+/g, ' ');
 }
@@ -21,8 +30,11 @@ function mergeBusinesses(businesses: ProviderBusiness[]) {
 
   const merged = [];
   for (const [, group] of byName.entries()) {
-    const allReviews = group.flatMap(g =>
-      (g.reviews ?? []).map(r => ({ ...r, source: g.source }))
+    const allReviews = group.flatMap((g) =>
+      (g.reviews ?? []).map((r) => ({
+        ...r,
+        source: toReviewSource(g.source)
+      }))
     );
 
     const first = group[0];
@@ -30,11 +42,14 @@ function mergeBusinesses(businesses: ProviderBusiness[]) {
 
     merged.push({
       company: first.name,
-      sources: group.map(g => ({
+      sources: group.map((g) => ({
         source: g.source,
         rating: g.rating ?? null,
         reviewCount: g.reviewCount ?? null,
-        url: g.url ?? null
+        url: g.url ?? null,
+        address: g.address ?? null,
+        website: g.website ?? null,
+        phone: g.phone ?? null
       })),
       summary
     });
